@@ -99,7 +99,7 @@ class QualityValidator:
 
     def calculate_coherence_score(self, content: str, section_type: str) -> float:
         """
-        TODO 4: Calculate coherence score for the content.
+        4: Calculate coherence score for the content.
 
         CURRENT STATE: Always returns 0.0 - no coherence checking!
 
@@ -130,20 +130,53 @@ class QualityValidator:
         - Count sentences by splitting on '.'
         - Cap the final score at 1.0
         """
+        if not content or not content.strip():
+            return 0.0
+
         score = 0.0
 
-        # TODO 4: Implement coherence scoring algorithm
-        # YOUR CODE HERE (approximately 30-40 lines)
-        # Steps:
-        # 1. Check paragraph structure (split by '\n\n')
-        # 2. Count logical connectors
-        # 3. Check for structured thinking markers
-        # 4. Measure content depth (sentence count)
-        # 5. Calculate final score (cap at 1.0)
+        # 1. Paragraph structure (check for multiple paragraphs)
+        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+        if len(paragraphs) >= 2:
+            score += 0.3
 
-        # BROKEN IMPLEMENTATION - FIX THIS!
-        logger.warning("TODO 4 not implemented: Coherence scoring broken")
-        return 0.0  # Always returns 0 - FIX THIS!
+        # 2. Logical connectors (therefore, however, furthermore, etc.)
+        connectors = [
+            "therefore", "however", "furthermore", "consequently", 
+            "moreover", "additionally", "thus", "hence", "nevertheless", 
+            "nonetheless", "alternatively", "in addition", "as a result", 
+            "on the other hand"
+        ]
+        import re
+        connectors_pattern = re.compile(
+            r'\b(' + '|'.join(re.escape(conn) for conn in connectors) + r')\b',
+            re.IGNORECASE
+        )
+        if connectors_pattern.search(content):
+            score += 0.2
+
+        # 3. Structured thinking (first, second, finally, etc.)
+        structure_markers = [
+            "first", "second", "third", "fourth", "finally", 
+            "lastly", "in conclusion", "to sum up"
+        ]
+        structure_pattern = re.compile(
+            r'\b(' + '|'.join(re.escape(marker) for marker in structure_markers) + r')\b',
+            re.IGNORECASE
+        )
+        list_markers = ["•", "-", "*", "1.", "2.", "3."]
+        has_list_marker = any(marker in content for marker in list_markers)
+        
+        if structure_pattern.search(content) or has_list_marker:
+            score += 0.2
+
+        # 4. Content depth (adequate number of sentences)
+        sentences = [s.strip() for s in content.split('.') if s.strip()]
+        if len(sentences) >= 8:
+            score += 0.3
+
+        # 5. Cap the final score at 1.0
+        return min(score, 1.0)
 
     def calculate_groundedness_score(
         self,
