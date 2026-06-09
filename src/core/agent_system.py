@@ -7,6 +7,7 @@ generate content, or work together. You need to fix it!
 The infrastructure is here, but the intelligence is missing.
 """
 
+
 import os
 import time
 import json
@@ -30,6 +31,7 @@ from ..models.legal_models import (
 )
 from ..prompts.personas import LegalPersonas
 from .quality_validator import QualityValidator
+from google.genai.types import GenerateContentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +78,7 @@ class LegalIntelligenceAgent:
 
     def initialize_vertex_ai(self) -> bool:
         """
-        TODO 1: Initialize Vertex AI and create model instance.
-
-        CURRENT STATE: Always returns False, can't connect to Vertex AI
+        Initialize Vertex AI and create model instance.
 
         Requirements:
         1. Initialize Google Gen AI client with Vertex AI support
@@ -98,8 +98,7 @@ class LegalIntelligenceAgent:
         try:
             logger.info(f"Initializing Vertex AI for project: {self.project_id}")
 
-            # TODO 1: Initialize Vertex AI
-            # YOUR CODE HERE (approximately 10-15 lines)
+            # Initialize Vertex AI
             # Steps:
             # 1. Initialize vertexai with project and location
             # 2. Create the GenerativeModel instance
@@ -108,8 +107,35 @@ class LegalIntelligenceAgent:
             # 5. Set self.initialized = True if successful
             # 6. Return True for success, False for failure
 
-            logger.error("TODO 1 not implemented: Vertex AI initialization failed")
-            return False
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=self.location
+            )
+
+            self.model_name = "gemini-2.5-flash"
+
+            config = GenerateContentConfig(
+                temperature=0.35,
+                max_output_tokens=2000,
+                top_p=0.9,
+                top_k=40
+            )
+            
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents="Say 'OK' if you're working",
+                config=config
+            )
+
+            if response is None:
+                logger.error("No response received from test generation prompt.")
+                self.initialized = False
+                return False
+
+            logger.info("Vertex AI and model instance initialized successfully.")
+            self.initialized = True
+            return True
 
         except Exception as e:
             logger.error(f"Failed to initialize Vertex AI: {str(e)}")
