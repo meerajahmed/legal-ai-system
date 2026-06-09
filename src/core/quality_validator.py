@@ -223,21 +223,50 @@ class QualityValidator:
         - Check coverage of expected_elements list
         - Cap the final score at 1.0
         """
+        if not content or not content.strip():
+            return 0.0
+
+        content_lower = content.lower()
         score = 0.0
 
-        # TODO 5: Implement groundedness scoring algorithm
-        # YOUR CODE HERE (approximately 35-45 lines)
-        # Steps:
-        # 1. Define section-specific keywords dictionary
-        # 2. Get keywords for this section_type
-        # 3. Calculate keyword coverage
-        # 4. Check for reasoning indicators
-        # 5. Check expected elements coverage
-        # 6. Calculate final score (cap at 1.0)
+        # 1. Section-specific keywords dictionary
+        keywords_map = {
+            "liability_assessment": ["liability", "negligence", "breach", "duty", "causation", "defendant", "plaintiff"],
+            "damage_calculation": ["damages", "compensation", "calculation", "quantum", "loss", "profits", "economic"],
+            "prior_art_analysis": ["prior art", "patent", "novelty", "obviousness", "claims", "validity", "reference"],
+            "competitive_landscape": ["competitors", "market share", "positioning", "competitor", "market", "landscape", "rivals"],
+            "risk_assessment": ["risk", "probability", "impact", "mitigation", "severity", "likelihood", "exposure"],
+            "strategic_recommendations": ["recommendation", "strategy", "implementation", "timeline", "recommend", "next steps", "action"]
+        }
 
-        # BROKEN IMPLEMENTATION - FIX THIS!
-        logger.warning("TODO 5 not implemented: Groundedness scoring broken")
-        return 0.0  # Always returns 0 - FIX THIS!
+        # 2. Get keywords for this section_type
+        keywords = keywords_map.get(section_type, ["analysis", "evidence", "assessment", "conclusion"])
+
+        # 3. Calculate keyword coverage (up to 0.4 points)
+        keyword_count = sum(1 for kw in keywords if kw in content_lower)
+        keyword_score = (keyword_count / len(keywords)) * 0.4 if keywords else 0.0
+        score += keyword_score
+
+        # 4. Check for reasoning indicators (up to 0.3 points)
+        reasoning_phrases = [
+            "based on", "because", "due to", "therefore", "shows that", 
+            "evidence of", "indicates", "as a result", "consequently", 
+            "established through", "supported by", "reveals", "precedent"
+        ]
+        reasoning_count = sum(1 for phrase in reasoning_phrases if phrase in content_lower)
+        reasoning_score = min(reasoning_count * 0.1, 0.3)
+        score += reasoning_score
+
+        # 5. Check expected elements coverage (up to 0.3 points)
+        if not expected_elements:
+            expected_score = 0.3
+        else:
+            expected_count = sum(1 for elem in expected_elements if elem.lower() in content_lower)
+            expected_score = (expected_count / len(expected_elements)) * 0.3
+        score += expected_score
+
+        # 6. Calculate final score (cap at 1.0)
+        return min(score, 1.0)
 
     def _calculate_completeness_score(self, content: str, expected_elements: List[str]) -> float:
         """Calculate how completely the content addresses requirements."""
