@@ -247,9 +247,7 @@ class LegalIntelligenceAgent:
 
     async def generate_complete_report(self, scenario: LegalScenario) -> AnalysisReport:
         """
-        TODO 3: Generate a complete analysis report.
-
-        CURRENT STATE: Generates dummy report with no real analysis
+        3: Generate a complete analysis report.
 
         Requirements:
         1. Define section generation sequence with persona assignments
@@ -276,49 +274,117 @@ class LegalIntelligenceAgent:
         logger.info(f"Starting complete report generation for case: {scenario.case_name}")
         start_time = time.time()
 
-        # TODO 3: Implement complete report generation
-        # YOUR CODE HERE (approximately 40-60 lines)
-        # Steps:
-        # 1. Define section_config with (section_type, persona) pairs
-        # 2. Initialize sections list and total_cost
-        # 3. Loop through section_config
-        # 4. Get persona using self.personas.get_persona()
-        # 5. Generate content using: await asyncio.to_thread(self.generate_section_content, ...)
-        #    IMPORTANT: Use asyncio.to_thread() to prevent blocking the event loop!
-        # 6. Validate quality using self.quality_validator.validate_section()
-        # 7. Retry if quality < 0.7 (also use asyncio.to_thread for retry)
-        # 8. Create ReportSection objects
-        # 9. Assemble final AnalysisReport
-
-        # DUMMY IMPLEMENTATION - REPLACE THIS!
-        logger.warning("TODO 3 not implemented: Generating dummy report")
-
-        dummy_sections = [
-            ReportSection(
-                type="liability_assessment",
-                title="Liability Assessment",
-                content="[BROKEN] Dummy liability content",
-                agent_type="business_analyst",
-                quality_score=0.5,
-                tokens_used=100,
-                cost=0.01,
-                timestamp=datetime.now().isoformat()
-            )
+        section_config = [
+            ("liability_assessment", "business_analyst"),
+            ("damage_calculation", "business_analyst"),
+            ("prior_art_analysis", "market_researcher"),
+            ("competitive_landscape", "market_researcher"),
+            ("risk_assessment", "strategic_consultant"),
+            ("strategic_recommendations", "strategic_consultant")
         ]
 
-        dummy_report = AnalysisReport(
-            scenario=scenario,
-            sections=dummy_sections,
-            executive_summary="[BROKEN] System not working - TODOs not implemented",
-            total_cost=0.01,
-            total_tokens=100,
-            processing_time=1.0,
-            confidence_score=0.5,
-            timestamp=datetime.now().isoformat(),
-            metadata={"error": "TODOs not implemented"}
-        )
+        sections = []
+        total_cost = 0.0
+        total_tokens = 0
 
-        return dummy_report
+        for section_type, persona_name in section_config:
+            persona_text = self.personas.get_persona(persona_name)
+            
+            # Generate content using asyncio.to_thread to prevent blocking the event loop
+            content, token_usage, cost = await asyncio.to_thread(
+                self.generate_section_content,
+                persona_text,
+                section_type,
+                scenario,
+                sections
+            )
+            
+            # Validate section quality
+            expected_elements = self._get_expected_elements(section_type)
+            quality = self.quality_validator.validate_section(
+                content,
+                section_type,
+                expected_elements
+            )
+            
+            # Retry with enhanced prompt if quality < 0.7
+            if quality.overall_score < 0.7:
+                logger.warning(
+                    f"Quality score {quality.overall_score:.2f} for {section_type} below threshold. "
+                    "Retrying with enhanced prompt..."
+                )
+                feedback_details = "\n".join(quality.feedback)
+                enhanced_persona = (
+                    persona_text +
+                    f"\n\nFEEDBACK FROM QUALITY VALIDATOR:\n"
+                    f"The previous draft was insufficient. Please revise the content to address the following feedback:\n"
+                    f"{feedback_details}\n"
+                    f"Generate a higher-quality response focusing on accuracy and completeness."
+                )
+                
+                content, retry_tokens, retry_cost = await asyncio.to_thread(
+                    self.generate_section_content,
+                    enhanced_persona,
+                    section_type,
+                    scenario,
+                    sections
+                )
+                
+                # Accumulate retry tokens and cost
+                token_usage = TokenUsage(
+                    input_tokens=token_usage.input_tokens + retry_tokens.input_tokens,
+                    output_tokens=token_usage.output_tokens + retry_tokens.output_tokens,
+                    total_tokens=token_usage.total_tokens + retry_tokens.total_tokens
+                )
+                cost += retry_cost
+                
+                # Re-validate quality after retry
+                quality = self.quality_validator.validate_section(
+                    content,
+                    section_type,
+                    expected_elements
+                )
+            
+            # Create ReportSection object
+            section = ReportSection(
+                type=section_type,
+                title=self._get_section_title(section_type),
+                content=content,
+                agent_type=self._get_agent_type(persona_text),
+                quality_score=quality.overall_score,
+                tokens_used=token_usage.total_tokens,
+                cost=cost,
+                timestamp=datetime.now().isoformat()
+            )
+            
+            sections.append(section)
+            total_tokens += token_usage.total_tokens
+            total_cost += cost
+
+        # Generate final executive summary
+        executive_summary = self._generate_executive_summary(sections, scenario)
+        
+        # Calculate overall confidence score as the average quality score of all sections
+        confidence_score = (
+            sum(s.quality_score for s in sections) / len(sections)
+            if sections else 0.0
+        )
+        
+        processing_time = time.time() - start_time
+        
+        report = AnalysisReport(
+            scenario=scenario,
+            sections=sections,
+            executive_summary=executive_summary,
+            total_cost=total_cost,
+            total_tokens=total_tokens,
+            processing_time=processing_time,
+            confidence_score=confidence_score,
+            timestamp=datetime.now().isoformat(),
+            metadata={"source": "agent_system_orchestration"}
+        )
+        
+        return report
 
     def _build_prompt(
         self,
