@@ -35,7 +35,6 @@ from google.genai.types import GenerateContentConfig
 
 logger = logging.getLogger(__name__)
 
-
 class LegalIntelligenceAgent:
     """
     Main orchestrator for the Legal Intelligence AI System.
@@ -78,7 +77,7 @@ class LegalIntelligenceAgent:
 
     def initialize_vertex_ai(self) -> bool:
         """
-        Initialize Vertex AI and create model instance.
+        1. Initialize Vertex AI and create model instance.
 
         Requirements:
         1. Initialize Google Gen AI client with Vertex AI support
@@ -114,18 +113,11 @@ class LegalIntelligenceAgent:
             )
 
             self.model_name = "gemini-2.5-flash"
-
-            config = GenerateContentConfig(
-                temperature=0.35,
-                max_output_tokens=2000,
-                top_p=0.9,
-                top_k=40
-            )
             
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents="Say 'OK' if you're working",
-                config=config
+                config=self.generation_config
             )
 
             if response is None:
@@ -150,9 +142,7 @@ class LegalIntelligenceAgent:
         previous_sections: List[ReportSection] = None
     ) -> Tuple[str, TokenUsage, float]:
         """
-        TODO 2: Generate content for a specific report section.
-
-        CURRENT STATE: Returns dummy content, no actual AI generation
+        2. Generate content for a specific report section.
 
         Requirements:
         1. Build a comprehensive prompt combining persona, scenario, and context
@@ -186,8 +176,7 @@ class LegalIntelligenceAgent:
         # Build the comprehensive prompt
         prompt = self._build_prompt(persona, section_type, scenario, previous_sections)
 
-        # TODO 2: Implement content generation with retry logic
-        # YOUR CODE HERE (approximately 25-35 lines)
+        # 2: Implement content generation with retry logic
         # Steps:
         # 1. Set max_retries = 3
         # 2. Loop for retry attempts
@@ -198,13 +187,63 @@ class LegalIntelligenceAgent:
         # 7. Handle exceptions with exponential backoff
         # 8. Return (content, token_usage, cost)
 
-        # DUMMY IMPLEMENTATION - REPLACE THIS!
-        logger.warning("TODO 2 not implemented: Using dummy content")
-        dummy_content = f"[BROKEN] This is dummy content for {section_type}. The AI generation is not working."
-        dummy_tokens = TokenUsage(input_tokens=100, output_tokens=50, total_tokens=150)
-        dummy_cost = 0.01
+        max_retries = 3
+        attempt = 0
+        response = None
+        last_exception = None
 
-        return dummy_content, dummy_tokens, dummy_cost
+        while attempt < max_retries:
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=self.generation_config
+                )
+
+                if response is not None:
+                    break
+
+            except Exception as e:
+                attempt += 1
+                last_exception = e
+
+                if attempt < max_retries:
+                    sleep_time = 2 ** attempt
+                    logger.warning(f"Generation attempt {attempt} failed: {str(e)}. Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    logger.error(f"Generation failed after {max_retries} attempts: {str(e)}")
+
+        if response is None:
+            raise last_exception or RuntimeError(f"Failed to generate content for {section_type}")
+
+        content = response.text or ""
+
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+
+        metadata = getattr(response, 'usage_metadata', None)
+        if metadata:
+            input_tokens = getattr(metadata, 'prompt_token_count', 0)
+            output_tokens = getattr(metadata, 'candidates_token_count', 0)
+            total_tokens = getattr(metadata, 'total_token_count', 0)
+
+        token_usage = TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens
+        )
+
+        cost = self._calculate_cost(token_usage)
+
+        # Track stats
+        self.token_usage_history.append(token_usage)
+        self.processing_times.append(time.time() - start_time)
+        self.success_count += 1
+        self.total_attempts += 1
+        
+        return content, token_usage, cost
 
     async def generate_complete_report(self, scenario: LegalScenario) -> AnalysisReport:
         """
