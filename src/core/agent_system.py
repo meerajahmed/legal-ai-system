@@ -17,9 +17,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import asyncio
 
-# Google AI imports
-from google import genai
-from google.genai import types
+# Google AI imports — optional; tests patch these names so they must exist in
+# the module namespace even when the package is not installed.
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:  # pragma: no cover
+    genai = None       # type: ignore[assignment]
+    genai_types = None  # type: ignore[assignment]
 
 # Internal imports
 from ..models.legal_models import (
@@ -31,7 +36,6 @@ from ..models.legal_models import (
 )
 from ..prompts.personas import LegalPersonas
 from .quality_validator import QualityValidator
-from google.genai.types import GenerateContentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,7 @@ class LegalIntelligenceAgent:
         self.location = location
         self.model_name = model_name
         self.client = None
+        self.model = None
         self.initialized = False
 
         # Components
@@ -66,12 +71,21 @@ class LegalIntelligenceAgent:
         self.total_attempts = 0
 
         # Configuration
-        self.generation_config = types.GenerateContentConfig(
-            temperature=0.7,
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=2048,
-        )
+        if genai_types is not None:
+            self.generation_config = genai_types.GenerateContentConfig(
+                temperature=0.7,
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=2048,
+            )
+        else:
+            # Fallback when google-genai is not installed (e.g. during unit tests)
+            self.generation_config = {
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 2048,
+            }
 
         logger.info(f"LegalIntelligenceAgent initialized for project {project_id}")
 
@@ -97,34 +111,27 @@ class LegalIntelligenceAgent:
         try:
             logger.info(f"Initializing Vertex AI for project: {self.project_id}")
 
-            # Initialize Vertex AI
-            # Steps:
-            # 1. Initialize vertexai with project and location
-            # 2. Create the GenerativeModel instance
-            # 3. Test with a simple prompt
-            # 4. Check the response
-            # 5. Set self.initialized = True if successful
-            # 6. Return True for success, False for failure
-
+            # 1. Create the Google Gen AI client with Vertex AI backend
             self.client = genai.Client(
                 vertexai=True,
                 project=self.project_id,
                 location=self.location
             )
 
-            self.model_name = "gemini-2.5-flash"
-            
+            # 2. Test with a simple prompt
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents="Say 'OK' if you're working",
-                config=self.generation_config
+                config=genai_types.GenerateContentConfig(max_output_tokens=10)
             )
 
+            # 3. Check the response
             if response is None:
                 logger.error("No response received from test generation prompt.")
                 self.initialized = False
                 return False
 
+            # 4. Set self.initialized = True if successful
             logger.info("Vertex AI and model instance initialized successfully.")
             self.initialized = True
             return True
